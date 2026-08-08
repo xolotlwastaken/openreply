@@ -75,6 +75,23 @@ Two processes, always. `npm run dev` serves the app and receives webhooks. `npm 
 
 Full environment variables and the production layout are in [docs/setup.md](docs/setup.md).
 
+### MCP server for coding agents
+
+OpenReply also includes a local MCP server for Codex and other coding agents.
+It can inspect and manage the same workspace resources as the dashboard,
+including Instagram accounts, campaigns, follow gates, tracked links, inbox
+messages, logs, diagnostics, and workspace members. Start it with:
+
+```bash
+npm run mcp
+```
+
+Set `OPENREPLY_MCP_WORKSPACE_ID` and `OPENREPLY_MCP_USER_ID`, then use the MCP
+configuration in [docs/setup.md](docs/setup.md). The server is stdio-only,
+loads `.env`, scopes all operations to one workspace, checks that the configured
+user is an owner/admin for write operations, never returns Instagram tokens, and
+requires `confirm: true` for destructive or externally visible actions.
+
 ## Set it up with your AI assistant
 
 If you use Claude Code, Cursor, or a similar tool, the Meta setup is a lot faster with an assistant driving it. There is a ready-made prompt in the [Set it up with an AI assistant](docs/setup.md#set-it-up-with-an-ai-assistant) section of the setup guide. Paste it into your assistant inside a clone of this repo, hand over your keys as it asks, and it will walk you through connecting Instagram and going live.

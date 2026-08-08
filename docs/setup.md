@@ -215,6 +215,55 @@ Hit `/api/health` any time. It reports the database, Redis, queue, and worker he
 
 If you want to inspect where a comment stopped, the Postgres tables tell you: `WebhookEvent` for delivery, `DmLog` for send status and errors, `OperationalEvent` for worker crashes and the polling reconciler's sweep logs.
 
+## Optional: connect a coding agent through MCP
+
+OpenReply includes a local stdio MCP server for agents such as Codex. It exposes
+the same operational surface as the dashboard: account and profile inspection,
+media and insights, webhook subscription, campaign CRUD, follow-gate settings,
+tracked links and analytics, DM logs, webhook and worker diagnostics, the inbox,
+workspace members, invitations, templates, and explicit send/reply actions.
+
+The server never returns Instagram access tokens. It scopes every database
+operation to `OPENREPLY_MCP_WORKSPACE_ID`, and write operations verify that
+`OPENREPLY_MCP_USER_ID` is an owner or admin in that workspace. Keep this MCP
+server local; do not publish its stdio process or give it a remote transport
+without adding transport authentication and request-scoped authorization.
+
+Add the following to the coding agent's MCP configuration, replacing the path
+and workspace ID with your values:
+
+```json
+{
+  "mcpServers": {
+    "openreply": {
+      "command": "npm",
+      "args": ["run", "mcp"],
+      "cwd": "/absolute/path/to/openreply",
+      "env": {
+        "OPENREPLY_MCP_WORKSPACE_ID": "your-workspace-id",
+        "OPENREPLY_MCP_USER_ID": "your-owner-or-admin-user-id"
+      }
+    }
+  }
+}
+```
+
+The server loads the repository's `.env` file, so the process still needs the
+same `DATABASE_URL`, `REDIS_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`,
+`ENCRYPTION_KEY`, and Instagram/Meta variables as the web app. The workspace ID
+can be read from the `Workspace` table. Use that workspace's `ownerId` (or a
+member's `User.id`) for `OPENREPLY_MCP_USER_ID`; members can use read tools but
+cannot create campaigns, manage accounts, or change workspace access. Do not
+put secrets in the repository or in a checked-in MCP configuration file.
+
+Tools that change live automation, workspace access, or send external Instagram
+messages require an explicit `confirm: true` argument. Instagram OAuth consent
+is intentionally a browser handoff: use `openreply_get_instagram_connect_url`,
+open the returned URL while signed in, approve Meta, then use the account tools
+to verify the connection. The remaining account, campaign, inbox, analytics,
+diagnostic, and member workflows are available through namespaced
+`openreply_*` tools.
+
 ## Local development
 
 You need Postgres and Redis. The included `docker-compose.yml` starts both:
