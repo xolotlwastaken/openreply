@@ -569,7 +569,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           automation.instagramAccount.instagramId,
           commentId,
           promptText,
-          automation.followPromptButtonLabel || "i'm following",
+          automation.followPromptButtonLabel || "I'm Following",
           `followcheck:${automation.id}`
         );
       } else if (automation.trackedLinks.length > 0) {
@@ -740,12 +740,11 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   // Follow-gate: before revealing the link, verify the user follows. On a
   // `followcheck:` tap a non-follower gets the prompt again (no quota spent);
   // on a read fallback a non-follower is silently skipped — the gate must not
-  // be bypassable by just reading the DM and waiting. Following, or
-  // unverifiable (null), falls through and delivers the link — fail-open so a
-  // real follower is never trapped.
+  // be bypassable by just reading the DM and waiting. Only an explicit `true`
+  // from Meta can reveal the link; false or unverifiable status stays gated.
   if ((isFollowCheck || fallback) && automation.requireFollow) {
     const follows = await getUserFollowStatus(accessToken, userId);
-    if (follows === false) {
+    if (follows !== true) {
       if (fallback) return;
       const promptText = renderMessageWithoutLink({
         message:
@@ -759,7 +758,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           automation.instagramAccount.instagramId,
           userId,
           promptText,
-          automation.followPromptButtonLabel || "i'm following",
+          automation.followPromptButtonLabel || "I'm Following",
           `followcheck:${automation.id}`
         );
       } catch (error) {
@@ -1052,10 +1051,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     // Follow gate: anyone not confirmed as a follower gets the prompt instead of
     // the link, with the same `followcheck:` button that re-verifies on tap.
     // `null` (unverifiable) prompts too — this is first contact, exactly like a
-    // comment, so it follows processComment's fail-closed rule rather than the
-    // postback path's fail-open one. Fail-open is only safe after a tap, where
-    // the user has already claimed to follow; here it would hand the link to
-    // anyone whose status the API happens not to resolve.
+    // comment, so it follows processComment's fail-closed rule.
     let sendFollowPrompt = false;
     if (automation.requireFollow) {
       const follows = await getUserFollowStatus(accessToken, senderId);
@@ -1097,7 +1093,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           automation.instagramAccount.instagramId,
           senderId,
           promptText,
-          automation.followPromptButtonLabel || "I'm following ✅",
+          automation.followPromptButtonLabel || "I'm Following",
           `followcheck:${automation.id}`
         );
       } else {
@@ -1283,4 +1279,3 @@ export function createDMWorker(): Worker<DmQueueJob> {
 
   return worker;
 }
-

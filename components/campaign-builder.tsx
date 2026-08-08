@@ -176,7 +176,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [requireFollow, setRequireFollow] = useState(false);
   const [followPromptMessage, setFollowPromptMessage] = useState("");
   const [followPromptButtonLabel, setFollowPromptButtonLabel] =
-    useState("i'm following");
+    useState("I'm Following");
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [followUpDelayMinutes, setFollowUpDelayMinutes] = useState(0);
@@ -283,7 +283,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setRequireFollow(c.requireFollow ?? false);
         setFollowPromptMessage(c.followPromptMessage ?? "");
         setFollowPromptButtonLabel(
-          c.followPromptButtonLabel ?? "i'm following"
+          c.followPromptButtonLabel ?? "I'm Following"
         );
         setFollowUpEnabled(c.followUpEnabled ?? false);
         setFollowUpMessage(c.followUpMessage ?? "");
@@ -422,7 +422,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       requireFollow,
       followPromptMessage: requireFollow ? followPromptMessage.trim() : "",
       followPromptButtonLabel: requireFollow
-        ? followPromptButtonLabel.trim() || "i'm following"
+        ? followPromptButtonLabel.trim() || "I'm Following"
         : "",
       followUpEnabled,
       followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
@@ -848,7 +848,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 <input
                   value={followPromptButtonLabel}
                   onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
-                  placeholder="i'm following"
+                  placeholder="I'm Following"
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                   maxLength={20}
                 />
@@ -1007,7 +1007,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             secondLinkButtonLabel={secondaryButtonLabel || "Open link"}
             requireFollow={requireFollow}
             followPromptMessage={followPromptMessage}
-            followPromptButtonLabel={followPromptButtonLabel || "i'm following"}
+            followPromptButtonLabel={followPromptButtonLabel || "I'm Following"}
             followUpEnabled={followUpEnabled}
             followUpMessage={followUpMessage}
             followUpDelayMinutes={followUpDelayMinutes}

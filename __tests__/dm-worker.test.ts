@@ -736,6 +736,36 @@ describe("DM Worker — Full Pipeline", () => {
     expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
   });
 
+  it("should not reveal the link when a button tap follow check is unavailable", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...mockAutomation,
+      requireFollow: true,
+      trackedLinks: [],
+    });
+    mockGetUserFollowStatus.mockResolvedValue(null);
+
+    const processor = getProcessor();
+    await processor(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "followcheck:auto_789",
+      })
+    );
+
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      expect.any(String),
+      "I'm Following",
+      "followcheck:auto_789"
+    );
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+
   it("should deliver a follow-gated read fallback once the user follows", async () => {
     mockPrisma.automation.findMany.mockResolvedValue([]);
     mockPrisma.automation.findFirst.mockResolvedValue({
@@ -1026,7 +1056,7 @@ describe("DM Worker — DM keyword trigger", () => {
       "ig_456",
       "commenter_999",
       expect.any(String),
-      "I'm following ✅",
+      "I'm Following",
       "followcheck:auto_789"
     );
     expect(mockSendDirectMessage).not.toHaveBeenCalled();

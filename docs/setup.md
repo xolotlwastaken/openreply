@@ -175,7 +175,7 @@ Still in the Instagram product, find the Configure webhooks step.
 - Callback URL: `https://your-app.vercel.app/api/webhook`
 - Verify token: the value of `WEBHOOK_VERIFY_TOKEN` from your environment
 - Click Verify and save. It should succeed immediately, because the app answers Meta's verification challenge. If the button is greyed out, click into the verify-token field and paste the token again; editing the callback URL often clears it.
-- Subscribe to the `comments` field.
+- Subscribe to the `comments`, `messages`, `messaging_postbacks`, and `messaging_seen` fields. OpenReply also requests these account-level subscriptions automatically when an Instagram account is connected; `messaging_postbacks` is required for the follow-gate button handler, and `messaging_seen` is used only for the optional delayed read fallback.
 
 To test delivery without a real comment, click Test next to `comments`, then click Send to My Server. This is a two-step control. Clicking Test only previews the sample payload; the second button is what actually POSTs it to your endpoint. After sending, a row should appear in your `WebhookEvent` table.
 
@@ -208,6 +208,8 @@ Meta's `/me` returns two IDs. The `id` field is app-scoped. The `user_id` field 
 3. Create a campaign on one of your posts with a keyword like `TEST`.
 4. From a different Instagram account, comment `TEST` on that post. It must be a different account, because OpenReply ignores your own comments on purpose.
 5. Watch for the DM. If nothing arrives, check the DM Logs page and `/api/health`.
+
+For the requested follow-gate behavior, enable **Follow gate**, leave the separate **Opening DM** disabled, and set the button label to exactly `I'm Following`. A matching comment then checks `is_user_follow_business`: `true` sends the resource immediately; `false` or an unavailable status sends the follow prompt. The button tap re-checks the flag and sends the resource only after an explicit `true`.
 
 Hit `/api/health` any time. It reports the database, Redis, queue, and worker heartbeat. If `worker.healthy` is false, the worker is not running or cannot reach Redis, and no DM will send even though webhooks are being received.
 

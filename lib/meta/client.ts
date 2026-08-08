@@ -750,7 +750,14 @@ export async function subscribeInstagramAccountToWebhooks(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        subscribed_fields: ["comments", "messages"],
+        // `messaging_postbacks` is required for follow-gate button taps.
+        // `messaging_seen` powers the delayed read fallback for opening DMs.
+        subscribed_fields: [
+          "comments",
+          "messages",
+          "messaging_postbacks",
+          "messaging_seen",
+        ],
       }),
     }
   );
