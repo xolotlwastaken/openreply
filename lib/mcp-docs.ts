@@ -3,29 +3,22 @@ export const OPENREPLY_REPOSITORY_URL =
 export const OPENREPLY_APP_URL = "https://openreply-coral-six.vercel.app";
 export const MCP_DOCS_URL = `${OPENREPLY_APP_URL}/docs/mcp`;
 export const MCP_AGENT_DOCS_URL = `${MCP_DOCS_URL}/agent.md`;
+export const MCP_REMOTE_URL = `${OPENREPLY_APP_URL}/api/mcp`;
 
-export const MCP_INSTALL_PROMPT = `Read ${MCP_AGENT_DOCS_URL} and install the OpenReply MCP server by following it exactly. Use the local stdio setup, keep credentials out of source control, ask me only for values you cannot discover safely, and verify the connection with openreply_health before making changes.`;
+export const MCP_INSTALL_PROMPT = `Read ${MCP_AGENT_DOCS_URL} and connect the remote OpenReply MCP server by following it exactly. The endpoint is ${MCP_REMOTE_URL}. Ask me to create a revocable MCP token in OpenReply Settings, keep it out of source control and chat logs, and verify the connection with openreply_health before making changes.`;
 
 export const CODEX_CONFIG = `[mcp_servers.openreply]
-command = "npm"
-args = ["run", "mcp"]
-cwd = "/ABSOLUTE/PATH/TO/openreply"
+url = "${MCP_REMOTE_URL}"
+bearer_token_env_var = "OPENREPLY_MCP_TOKEN"
 startup_timeout_sec = 30
-tool_timeout_sec = 120
-
-[mcp_servers.openreply.env]
-OPENREPLY_MCP_WORKSPACE_ID = "YOUR_WORKSPACE_ID"
-OPENREPLY_MCP_USER_ID = "YOUR_USER_ID"`;
+tool_timeout_sec = 120`;
 
 export const GENERIC_MCP_CONFIG = `{
   "mcpServers": {
     "openreply": {
-      "command": "npm",
-      "args": ["run", "mcp"],
-      "cwd": "/ABSOLUTE/PATH/TO/openreply",
-      "env": {
-        "OPENREPLY_MCP_WORKSPACE_ID": "YOUR_WORKSPACE_ID",
-        "OPENREPLY_MCP_USER_ID": "YOUR_USER_ID"
+      "url": "${MCP_REMOTE_URL}",
+      "headers": {
+        "Authorization": "Bearer \${OPENREPLY_MCP_TOKEN}"
       }
     }
   }
@@ -108,16 +101,17 @@ const toolDirectory = MCP_TOOL_GROUPS.map(
     `### ${group.title}\n${group.description}\n\n${group.tools.map((tool) => `- \`${tool}\``).join("\n")}`,
 ).join("\n\n");
 
-export const MCP_AGENT_MARKDOWN = `# OpenReply MCP installation and operating guide
+export const MCP_AGENT_MARKDOWN = `# OpenReply remote MCP installation and operating guide
 
 Canonical human documentation: ${MCP_DOCS_URL}
+Remote MCP endpoint: ${MCP_REMOTE_URL}
 Repository: ${OPENREPLY_REPOSITORY_URL}
 
 ## Instructions for the AI agent
 
-If a user gives you this document and asks you to install OpenReply MCP, perform the installation in their authorized local environment. Do not treat this documentation URL as the MCP transport URL. OpenReply MCP is a local stdio server: the agent client starts it with \`npm run mcp\` from a checked-out OpenReply repository.
+If a user gives you this document and asks you to install OpenReply MCP, connect their MCP client to the deployed Streamable HTTP endpoint at ${MCP_REMOTE_URL}. This documentation URL is not the transport URL.
 
-Preserve any existing checkout changes. Never commit credentials. Ask the user for secrets or identifiers only when they cannot be discovered safely from the authorized environment. Explain any external or destructive action before requesting confirmation.
+Never commit, print, or persist the bearer token in source control or chat transcripts. Ask the user to create a token in OpenReply Settings and place it in the client environment or secret store. Explain any external or destructive action before requesting confirmation.
 
 ## What OpenReply MCP controls
 
@@ -125,28 +119,16 @@ OpenReply is a self-hosted Instagram comment-to-DM automation application. Its M
 
 ## Prerequisites
 
-- Node.js 22 or newer and npm.
-- Git.
-- Access to the user's OpenReply checkout or permission to clone it.
-- The same \`DATABASE_URL\`, \`REDIS_URL\`, \`NEXTAUTH_URL\`, \`NEXTAUTH_SECRET\`, and \`ENCRYPTION_KEY\` used by the OpenReply application, stored in the checkout's untracked \`.env\` file.
-- \`OPENREPLY_MCP_WORKSPACE_ID\` for the single workspace this MCP connection may access.
-- \`OPENREPLY_MCP_USER_ID\` for the user whose permissions govern writes. Use an owner or admin ID for management tools.
+- An OpenReply account with membership in the intended workspace.
+- An MCP client that supports Streamable HTTP and bearer authentication.
+- A revocable token created under OpenReply Settings → Remote MCP access. The plaintext token is shown once.
 
-## Install the server
+## Connect the server
 
-1. Reuse an existing clean checkout when available. Otherwise clone the maintained fork:
-
-   \`git clone ${OPENREPLY_REPOSITORY_URL}.git\`
-
-2. Enter the checkout and install locked dependencies:
-
-   \`npm ci\`
-
-3. Create an untracked \`.env\` from \`.env.example\` and populate the deployment values. Do not place secrets in MCP config when they can remain in \`.env\`.
-
-4. Identify the workspace and user IDs from the authorized OpenReply database. The \`Workspace.id\` is the workspace ID. Its \`ownerId\`, or the \`User.id\` of an admin member, is the MCP user ID.
-
-5. Add the stdio server to the MCP client using one of the configurations below. Replace every placeholder and use an absolute checkout path.
+1. Ask the user to sign in at ${OPENREPLY_APP_URL} and open Settings.
+2. Under **Remote MCP access**, create a named token for this client.
+3. Ask the user to store the token as \`OPENREPLY_MCP_TOKEN\` in the MCP client's environment or secret store. Do not ask them to commit it to a repository.
+4. Configure the client with the endpoint and bearer-token environment variable.
 
 ### Codex config.toml
 
@@ -156,7 +138,7 @@ Codex reads MCP configuration from \`~/.codex/config.toml\` or a trusted project
 ${CODEX_CONFIG}
 \`\`\`
 
-Restart the Codex client after changing configuration. Use \`codex mcp list\` or \`/mcp\` to confirm that the server connected.
+Restart Codex after changing configuration. Use \`codex mcp list\` or \`/mcp\` to confirm that the server connected.
 
 ### JSON-based MCP clients
 
@@ -164,7 +146,7 @@ Restart the Codex client after changing configuration. Use \`codex mcp list\` or
 ${GENERIC_MCP_CONFIG}
 \`\`\`
 
-The exact settings file location varies by client. Preserve the command, arguments, absolute working directory, and the two scoping variables.
+The exact format varies by client. If environment interpolation is unsupported, use the client's encrypted secret or credential store to send \`Authorization: Bearer <token>\`. Do not write the token into a tracked settings file.
 
 ## Verify before operating
 
@@ -175,13 +157,13 @@ The exact settings file location varies by client. Preserve the command, argumen
 
 ## Safety contract
 
-- Every database operation is scoped to \`OPENREPLY_MCP_WORKSPACE_ID\`.
-- A supplied \`workspaceId\` must match the configured workspace.
+- Every token is bound to its issuing OpenReply user and workspace.
+- A supplied \`workspaceId\` must match the token's workspace.
 - Instagram access tokens are never returned by tools.
-- Campaign and workspace writes require the configured MCP user to be an owner or admin.
+- Campaign and workspace writes require the token's user to remain an owner or admin.
 - Destructive actions, live automation changes, public replies, and DMs require \`confirm: true\` in the tool call.
 - Instagram OAuth is a browser handoff. Get the URL with \`openreply_get_instagram_connect_url\`; do not attempt to collect an Instagram password.
-- The server is stdio-only. Do not expose it publicly or convert it to a remote transport without adding request-scoped authentication and authorization.
+- Tokens are stored as SHA-256 hashes, can be revoked in Settings, and are rate-limited. Remote tool calls are audited without storing their arguments.
 
 ## Zernio pre-publication workflow
 
@@ -203,10 +185,10 @@ Tool schemas are authoritative and are advertised by the running MCP server. Ins
 
 ## Troubleshooting
 
-- Server does not start: run \`npm run mcp\` inside the checkout and inspect stderr. Confirm Node, dependencies, and \`.env\`.
-- Workspace mismatch: verify \`OPENREPLY_MCP_WORKSPACE_ID\`; do not bypass the scope check.
-- Writes are rejected: verify \`OPENREPLY_MCP_USER_ID\` belongs to the workspace as owner or admin.
-- Database or Redis fails: use the same reachable URLs as the running OpenReply environment and check VPN/network access.
+- HTTP 401: create a new token in OpenReply Settings, update \`OPENREPLY_MCP_TOKEN\`, and restart the client. The token may be invalid or revoked.
+- HTTP 429: wait for the \`Retry-After\` interval before retrying.
+- Workspace mismatch: do not pass a workspace ID from another workspace; the token's workspace is authoritative.
+- Writes are rejected: verify the token owner still belongs to the workspace as an owner or admin.
 - Worker is unhealthy: repair the always-on worker before expecting DMs or Zernio reconciliation.
 - Scheduled posts are absent: confirm Zernio is connected in OpenReply Settings, the account mapping is exact, and \`ZERNIO_INTEGRATION_ENABLED=true\` on both web and worker.
 `;

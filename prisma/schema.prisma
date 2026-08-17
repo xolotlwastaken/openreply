@@ -23,6 +23,7 @@ model User {
   ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
   workspaceMembers  WorkspaceMember[]
   sentInvitations   WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
+  mcpAccessTokens   McpAccessToken[]
 }
 
 model Account {
@@ -87,6 +88,7 @@ model Workspace {
   zernioConnection  ZernioConnection?
   zernioAccountMappings ZernioAccountMapping[]
   scheduledPosts    ScheduledPost[]
+  mcpAccessTokens   McpAccessToken[]
 
   @@index([ownerId])
 }
@@ -125,6 +127,27 @@ model WorkspaceInvitation {
   @@index([email])
   @@index([workspaceId])
   @@index([status])
+}
+
+/// Revocable bearer credential for the remote MCP endpoint. Only the SHA-256
+/// hash is stored; the plaintext token is shown once when it is created.
+model McpAccessToken {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  name        String
+  tokenHash   String    @unique
+  tokenPrefix String
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
+  @@index([workspaceId, revokedAt])
 }
 
 model InstagramAccount {

@@ -1,6 +1,4 @@
-import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db/client";
@@ -37,7 +35,7 @@ import { MCP_SERVER_INSTRUCTIONS } from "@/lib/mcp-docs";
  */
 
 const workspaceInput = {
-  workspaceId: z.string().min(1).optional().describe("Must match OPENREPLY_MCP_WORKSPACE_ID when provided"),
+  workspaceId: z.string().min(1).optional().describe("Must match the authenticated OpenReply workspace when provided"),
 };
 
 const accountInput = {
@@ -137,8 +135,14 @@ function errorResult(error: unknown) {
   return textResult({ success: false, error: message }, true);
 }
 
+export type OpenReplyMcpContext = {
+  workspaceId?: string;
+  userId?: string;
+};
+
+export function createOpenReplyMcpServer(context: OpenReplyMcpContext = {}) {
 function configuredWorkspaceId(requested?: string) {
-  const configured = process.env.OPENREPLY_MCP_WORKSPACE_ID;
+  const configured = context.workspaceId ?? process.env.OPENREPLY_MCP_WORKSPACE_ID;
   if (!configured) {
     throw new Error("OPENREPLY_MCP_WORKSPACE_ID is required");
   }
@@ -396,7 +400,7 @@ async function updateCampaign(workspaceId: string, id: string, input: CampaignUp
 }
 
 async function requireAdmin(workspaceId: string) {
-  const userId = process.env.OPENREPLY_MCP_USER_ID;
+  const userId = context.userId ?? process.env.OPENREPLY_MCP_USER_ID;
   if (!userId) {
     throw new Error("OPENREPLY_MCP_USER_ID is required for write operations");
   }
@@ -1059,7 +1063,8 @@ server.registerTool("openreply_remove_workspace_member", {
     if (!memberId && !invitationId) throw new Error("Provide memberId or invitationId");
     if (memberId) {
       const member = await prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId: resolved } });
-      if (!member || member.role === "OWNER" || member.userId === process.env.OPENREPLY_MCP_USER_ID) {
+      const currentUserId = context.userId ?? process.env.OPENREPLY_MCP_USER_ID;
+      if (!member || member.role === "OWNER" || member.userId === currentUserId) {
         throw new Error("Owner or current MCP user membership cannot be removed");
       }
       await prisma.workspaceMember.delete({ where: { id: member.id } });
@@ -1071,13 +1076,5 @@ server.registerTool("openreply_remove_workspace_member", {
   }
 });
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("[OpenReply MCP] Server started");
+  return server;
 }
-
-main().catch((error) => {
-  console.error("[OpenReply MCP] Server failed:", error);
-  process.exitCode = 1;
-});

@@ -7,6 +7,7 @@ import {
   MCP_AGENT_DOCS_URL,
   MCP_DOCS_URL,
   MCP_INSTALL_PROMPT,
+  MCP_REMOTE_URL,
   MCP_TOOL_GROUPS,
   OPENREPLY_REPOSITORY_URL,
 } from "@/lib/mcp-docs";
@@ -14,7 +15,7 @@ import {
 export const metadata: Metadata = {
   title: "OpenReply MCP Server — Install and Agent Guide",
   description:
-    "Install OpenReply's local MCP server in Codex, Claude, Cursor, or another MCP client and let AI agents safely manage Instagram automations and Zernio scheduled posts.",
+    "Connect OpenReply's authenticated remote MCP server to Codex, Claude, Cursor, or another MCP client and safely manage Instagram automations and Zernio scheduled posts.",
   alternates: {
     canonical: "/docs/mcp",
     types: {
@@ -30,10 +31,10 @@ export const metadata: Metadata = {
 };
 
 const prerequisites = [
-  "Node.js 22 or newer, npm, and Git",
-  "An OpenReply checkout and its untracked .env configuration",
-  "Access to the OpenReply PostgreSQL and Redis services",
-  "The target Workspace.id and an authorized User.id",
+  "An OpenReply account with workspace access",
+  "An MCP client with Streamable HTTP support",
+  "A named access token created in OpenReply Settings",
+  "A client environment or secret store for the token",
 ];
 
 const verificationSteps = [
@@ -124,8 +125,8 @@ export default function McpDocsPage() {
               Give your coding agent control of OpenReply
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600">
-              Install the local MCP server once, then let Codex, Claude, Cursor,
-              or another MCP client inspect campaigns, schedule Zernio-backed
+              Connect the hosted MCP endpoint once, then let Codex, Claude,
+              Cursor, or another MCP client inspect campaigns, schedule Zernio-backed
               automations, check delivery health, and manage Instagram workflows.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -163,10 +164,10 @@ export default function McpDocsPage() {
               className="mt-5 w-full border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-bold text-zinc-800 transition hover:bg-zinc-100"
             />
             <div className="mt-6 border-l-2 border-amber-400 bg-amber-50 px-4 py-3">
-              <p className="text-sm font-bold text-amber-950">Local stdio server</p>
+              <p className="text-sm font-bold text-amber-950">Authenticated remote server</p>
               <p className="mt-1 text-sm leading-6 text-amber-900/75">
-                This documentation URL tells the agent how to install OpenReply.
-                It is not a remote MCP endpoint and contains no credentials.
+                The guide tells the agent how to connect. The transport endpoint is{" "}
+                <span className="break-all font-mono">{MCP_REMOTE_URL}</span> and requires a revocable token.
               </p>
             </div>
           </div>
@@ -195,8 +196,8 @@ export default function McpDocsPage() {
           <section id="install" className="scroll-mt-24">
             <SectionHeading
               eyebrow="01 — Install"
-              title="Prepare the local server"
-              description="OpenReply MCP runs from the same source tree as the application. It uses the existing deployment credentials from an untracked .env file and does not expose Instagram tokens to the client."
+              title="Create a revocable access token"
+              description="Sign in to OpenReply, open Settings, and create a named token under Remote MCP access. The token is bound to your user and workspace and is displayed only once."
             />
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -207,24 +208,25 @@ export default function McpDocsPage() {
               ))}
             </div>
 
-            <div className="mt-8">
-              <div className="mb-3 flex items-center justify-between gap-4">
-                <p className="text-sm font-bold text-zinc-950">Clone and install</p>
-                <CopyButton
-                  value={`git clone ${OPENREPLY_REPOSITORY_URL}.git\ncd openreply\nnpm ci\ncp .env.example .env`}
-                  label="Copy commands"
-                  className="text-sm font-bold text-orange-600 hover:text-orange-700"
-                />
+            <div className="mt-8 border border-zinc-200 bg-zinc-50 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-bold text-zinc-950">Remote endpoint</p>
+                  <p className="mt-2 break-all font-mono text-sm text-zinc-700">{MCP_REMOTE_URL}</p>
+                </div>
+                <CopyButton value={MCP_REMOTE_URL} label="Copy URL" className="shrink-0 text-sm font-bold text-orange-600 hover:text-orange-700" />
               </div>
-              <CodeBlock>{`git clone ${OPENREPLY_REPOSITORY_URL}.git\ncd openreply\nnpm ci\ncp .env.example .env`}</CodeBlock>
+              <p className="mt-4 text-sm leading-6 text-zinc-600">
+                Store the one-time token as <code className="bg-white px-1.5 py-1 font-mono text-xs text-zinc-900">OPENREPLY_MCP_TOKEN</code> in your MCP client environment. Never commit it.
+              </p>
             </div>
           </section>
 
           <section id="configure" className="scroll-mt-24">
             <SectionHeading
               eyebrow="02 — Configure"
-              title="Scope the agent to one workspace"
-              description="The workspace ID is Workspace.id. The user ID is the owner's User.id or an admin member's User.id. These values define the maximum scope and permissions of this MCP connection."
+              title="Connect with bearer authentication"
+              description="The access token determines the user, workspace, and role automatically. No database credentials, user IDs, repository checkout, or local server process are required."
             />
 
             <div className="mt-8 border border-zinc-200">
@@ -317,15 +319,15 @@ export default function McpDocsPage() {
           <section id="security" className="scroll-mt-24">
             <SectionHeading
               eyebrow="06 — Security"
-              title="Local access, explicit boundaries"
-              description="This integration is intentionally local and workspace-scoped. Its safety model is part of the protocol, not a suggestion left only in this page."
+              title="Revocable, role-aware access"
+              description="Every request is authenticated to an OpenReply user and workspace. The server applies the same membership roles as the dashboard and adds rate limits and tool-call auditing."
             />
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {[
-                ["Workspace isolation", "Every database operation is restricted to OPENREPLY_MCP_WORKSPACE_ID."],
-                ["Role-aware writes", "Campaign and access changes require the configured user to be an owner or admin."],
+                ["Workspace isolation", "Every token is permanently scoped to the workspace that issued it."],
+                ["Role-aware writes", "Campaign and access changes require the token owner to remain an owner or admin."],
                 ["Explicit confirmation", "Live changes, destructive actions, DMs, and public replies require confirm: true."],
-                ["No token exposure", "Instagram access tokens are decrypted only inside the server and never returned to agents."],
+                ["Revocable credentials", "MCP tokens are stored as hashes, shown once, rate-limited, audited, and revocable in Settings."],
               ].map(([title, body]) => (
                 <article key={title} className="border-l-2 border-emerald-500 bg-emerald-50 p-5">
                   <h3 className="font-black text-emerald-950">{title}</h3>
@@ -338,15 +340,17 @@ export default function McpDocsPage() {
           <section id="troubleshooting" className="scroll-mt-24">
             <SectionHeading
               eyebrow="07 — Troubleshooting"
-              title="Fast checks when the server does not connect"
-              description="Run the stdio process directly first. Its stderr output usually identifies a missing dependency, environment variable, or network service immediately."
+              title="Fast checks when the client does not connect"
+              description="The endpoint uses standard Streamable HTTP with bearer authentication. Connection failures usually come from a missing, revoked, or stale client token."
             />
             <div className="mt-8">
-              <CodeBlock>{`cd /ABSOLUTE/PATH/TO/openreply\nnpm run mcp`}</CodeBlock>
+              <CodeBlock>{`curl -i ${MCP_REMOTE_URL}\
+  -H "Authorization: Bearer $OPENREPLY_MCP_TOKEN"`}</CodeBlock>
             </div>
             <div className="mt-5 space-y-3 text-sm leading-6 text-zinc-600">
-              <p><strong className="text-zinc-950">Workspace mismatch:</strong> correct the configured workspace ID; do not bypass the scope check.</p>
-              <p><strong className="text-zinc-950">Writes rejected:</strong> confirm the MCP user is an owner or admin member.</p>
+              <p><strong className="text-zinc-950">HTTP 401:</strong> create a new token in Settings, update the client secret, and restart the client.</p>
+              <p><strong className="text-zinc-950">HTTP 429:</strong> wait for the Retry-After interval before reconnecting.</p>
+              <p><strong className="text-zinc-950">Writes rejected:</strong> confirm the token owner is still an owner or admin member.</p>
               <p><strong className="text-zinc-950">Scheduled posts absent:</strong> verify the Zernio connection, exact account mapping, and feature flag on both web and worker.</p>
               <p><strong className="text-zinc-950">Worker unhealthy:</strong> repair the Railway worker before expecting DMs or publication reconciliation.</p>
             </div>
@@ -360,7 +364,7 @@ export default function McpDocsPage() {
               Give the agent one URL
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-700">
-              The raw guide is self-contained. Copy the prompt below into a coding-agent task and let it perform the local installation.
+              The raw guide is self-contained. Copy the prompt below into a coding-agent task, then create a one-time token in OpenReply Settings when the agent asks for it.
             </p>
             <div className="mt-5 border border-orange-200 bg-white p-5 font-mono text-sm leading-6 text-zinc-700">
               {MCP_INSTALL_PROMPT}

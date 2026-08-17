@@ -78,20 +78,16 @@ Full environment variables and the production layout are in [docs/setup.md](docs
 
 ### MCP server for coding agents
 
-OpenReply also includes a local MCP server for Codex and other coding agents.
-It can inspect and manage the same workspace resources as the dashboard,
-including Instagram accounts, campaigns, follow gates, tracked links, inbox
-messages, logs, diagnostics, and workspace members. Start it with:
+OpenReply exposes an authenticated remote MCP server for Codex and other coding
+agents at `https://openreply-coral-six.vercel.app/api/mcp`. It can inspect and
+manage the same workspace resources as the dashboard, including Instagram
+accounts, campaigns, follow gates, tracked links, inbox messages, logs,
+diagnostics, and workspace members.
 
-```bash
-npm run mcp
-```
-
-Set `OPENREPLY_MCP_WORKSPACE_ID` and `OPENREPLY_MCP_USER_ID`, then use the MCP
-configuration in [docs/setup.md](docs/setup.md). The server is stdio-only,
-loads `.env`, scopes all operations to one workspace, checks that the configured
-user is an owner/admin for write operations, never returns Instagram tokens, and
-requires `confirm: true` for destructive or externally visible actions.
+Create a revocable access token in Settings → Remote MCP access. The token is
+stored only as a hash, inherits the issuing user's workspace role, and can be
+revoked at any time. The local `npm run mcp` stdio server remains available for
+self-hosted development.
 
 Public, agent-readable installation documentation is available at
 [openreply-coral-six.vercel.app/docs/mcp/agent.md](https://openreply-coral-six.vercel.app/docs/mcp/agent.md).

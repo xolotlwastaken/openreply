@@ -1,6 +1,7 @@
 import {
   MCP_AGENT_DOCS_URL,
   MCP_DOCS_URL,
+  MCP_REMOTE_URL,
   OPENREPLY_REPOSITORY_URL,
 } from "@/lib/mcp-docs";
 
@@ -9,14 +10,15 @@ export const dynamic = "force-static";
 export function GET() {
   const content = `# OpenReply
 
-OpenReply is a self-hosted Instagram comment-to-DM automation application with a local stdio MCP server for AI agents.
+OpenReply is a self-hosted Instagram comment-to-DM automation application with an authenticated remote MCP server for AI agents.
 
 ## Agent documentation
 - MCP installation and operating guide: ${MCP_AGENT_DOCS_URL}
 - Human-readable MCP documentation: ${MCP_DOCS_URL}
+- Remote MCP endpoint: ${MCP_REMOTE_URL}
 - Source repository: ${OPENREPLY_REPOSITORY_URL}
 
-The documentation URL is not a remote MCP endpoint. Follow the agent guide to install the local stdio server.
+The documentation URL is not the transport endpoint. Follow the agent guide and ask the user to create a revocable token in OpenReply Settings.
 `;
 
   return new Response(content, {

@@ -65,6 +65,19 @@ interface ZernioData {
   }>;
 }
 
+interface McpAccessData {
+  endpoint: string;
+  tokens: Array<{
+    id: string;
+    name: string;
+    tokenPrefix: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+    expiresAt: string | null;
+    revokedAt: string | null;
+  }>;
+}
+
 export default function SettingsPage() {
   const [data, setData] = useState<SettingsData | null>(null);
   const [membersData, setMembersData] = useState<WorkspaceMembersData | null>(
@@ -80,6 +93,11 @@ export default function SettingsPage() {
   const [zernioApiKey, setZernioApiKey] = useState("");
   const [zernioError, setZernioError] = useState<string | null>(null);
   const [mappingDraft, setMappingDraft] = useState<Record<string, string>>({});
+  const [mcpData, setMcpData] = useState<McpAccessData | null>(null);
+  const [mcpTokenName, setMcpTokenName] = useState("My coding agent");
+  const [newMcpToken, setNewMcpToken] = useState<string | null>(null);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+  const [copiedMcpValue, setCopiedMcpValue] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -89,8 +107,9 @@ export default function SettingsPage() {
         status: res.status,
         payload: await res.json(),
       })),
+      fetch("/api/mcp/tokens", { cache: "no-store" }).then((res) => res.json()),
     ])
-      .then(([statsPayload, membersPayload, zernioResult]) => {
+      .then(([statsPayload, membersPayload, zernioResult, mcpPayload]) => {
         if (statsPayload.success) setData(statsPayload.data);
         if (membersPayload.success) setMembersData(membersPayload.data);
         if (zernioResult.status === 404) setZernioAvailable(false);
@@ -108,6 +127,7 @@ export default function SettingsPage() {
             );
           }
         }
+        if (mcpPayload.success) setMcpData(mcpPayload.data);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -228,6 +248,53 @@ export default function SettingsPage() {
     if (payload.success) await refreshZernio();
     else setZernioError(payload.error ?? "Zernio sync failed");
     setBusy(null);
+  }
+
+  async function createMcpToken(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy("mcp-create");
+    setMcpError(null);
+    setNewMcpToken(null);
+    const response = await fetch("/api/mcp/tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: mcpTokenName }),
+    });
+    const payload = await response.json();
+    if (payload.success) {
+      setNewMcpToken(payload.data.token);
+      setMcpData((current) => ({
+        endpoint: payload.data.endpoint,
+        tokens: [payload.data.accessToken, ...(current?.tokens ?? [])],
+      }));
+      setMcpTokenName("My coding agent");
+    } else {
+      setMcpError(payload.error ?? "Could not create MCP access token");
+    }
+    setBusy(null);
+  }
+
+  async function revokeMcpToken(tokenId: string) {
+    if (!confirm("Revoke this MCP token? Any agent using it will lose access immediately.")) {
+      return;
+    }
+    setBusy(`mcp:${tokenId}`);
+    setMcpError(null);
+    const response = await fetch("/api/mcp/tokens", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tokenId }),
+    });
+    const payload = await response.json();
+    if (payload.success) setMcpData(payload.data);
+    else setMcpError(payload.error ?? "Could not revoke MCP access token");
+    setBusy(null);
+  }
+
+  async function copyMcpValue(label: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopiedMcpValue(label);
+    window.setTimeout(() => setCopiedMcpValue(null), 1800);
   }
 
   if (loading) {
@@ -427,6 +494,118 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+
+      <section className="panel rounded p-4 sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Remote MCP access</h2>
+            <p className="mt-1 text-xs leading-5 text-muted">
+              Create a revocable token for Codex, Claude, Cursor, or another MCP client.
+              Tokens inherit your workspace role and are stored only as hashes.
+            </p>
+          </div>
+          <a
+            href="/docs/mcp"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-semibold text-accent hover:underline"
+          >
+            Installation guide
+          </a>
+        </div>
+
+        <div className="mt-5 rounded border border-border bg-surface/70 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Endpoint</p>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <code className="min-w-0 flex-1 break-all text-xs text-foreground">
+              {mcpData?.endpoint ?? "Loading…"}
+            </code>
+            {mcpData?.endpoint && (
+              <button
+                type="button"
+                onClick={() => copyMcpValue("endpoint", mcpData.endpoint)}
+                className="rounded border border-border px-3 py-1.5 text-xs font-medium text-foreground"
+              >
+                {copiedMcpValue === "endpoint" ? "Copied" : "Copy URL"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {newMcpToken && (
+          <div className="mt-4 rounded border border-warning/30 bg-warning/5 p-4">
+            <p className="text-sm font-semibold text-foreground">Copy this token now</p>
+            <p className="mt-1 text-xs text-muted">
+              OpenReply cannot display it again. Revoke it and create another if it is lost.
+            </p>
+            <code className="mt-3 block break-all rounded border border-border bg-background p-3 text-xs text-foreground">
+              {newMcpToken}
+            </code>
+            <button
+              type="button"
+              onClick={() => copyMcpValue("token", newMcpToken)}
+              className="mt-3 rounded bg-accent px-4 py-2 text-sm font-semibold text-white"
+            >
+              {copiedMcpValue === "token" ? "Token copied" : "Copy token"}
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={createMcpToken} className="mt-5 flex flex-col gap-3 sm:flex-row">
+          <input
+            value={mcpTokenName}
+            onChange={(event) => setMcpTokenName(event.target.value)}
+            maxLength={80}
+            placeholder="Token name"
+            className="min-w-0 flex-1 rounded border border-border bg-surface px-3 py-2 text-sm text-foreground"
+            required
+          />
+          <button
+            type="submit"
+            disabled={busy === "mcp-create"}
+            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy === "mcp-create" ? "Creating…" : "Create token"}
+          </button>
+        </form>
+
+        <div className="mt-5 space-y-3">
+          {(mcpData?.tokens ?? []).map((token) => (
+            <div
+              key={token.id}
+              className="flex flex-col gap-3 rounded border border-border bg-surface/70 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{token.name}</p>
+                <p className="mt-1 text-xs text-muted">
+                  {token.tokenPrefix} · {token.revokedAt ? "Revoked" : token.lastUsedAt
+                    ? `Used ${new Date(token.lastUsedAt).toLocaleString()}`
+                    : "Never used"}
+                </p>
+              </div>
+              {!token.revokedAt && (
+                <button
+                  type="button"
+                  onClick={() => revokeMcpToken(token.id)}
+                  disabled={busy === `mcp:${token.id}`}
+                  className="rounded border border-error/20 px-3 py-1.5 text-xs font-medium text-error hover:bg-error/10 disabled:opacity-50"
+                >
+                  {busy === `mcp:${token.id}` ? "Revoking…" : "Revoke"}
+                </button>
+              )}
+            </div>
+          ))}
+          {mcpData?.tokens.length === 0 && (
+            <p className="text-sm text-muted">No MCP access tokens yet.</p>
+          )}
+        </div>
+
+        {mcpError && (
+          <p className="mt-4 rounded border border-error/20 bg-error/5 p-3 text-sm text-error">
+            {mcpError}
+          </p>
+        )}
+      </section>
 
       <section className="panel rounded p-4 sm:p-6">
         <h2 className="text-base font-semibold mb-6">Team</h2>

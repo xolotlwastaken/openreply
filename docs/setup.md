@@ -247,45 +247,42 @@ If you want to inspect where a comment stopped, the Postgres tables tell you: `W
 
 ## Optional: connect a coding agent through MCP
 
-OpenReply includes a local stdio MCP server for agents such as Codex. It exposes
+OpenReply includes an authenticated remote MCP server for agents such as Codex. It exposes
 the same operational surface as the dashboard: account and profile inspection,
 media and insights, webhook subscription, campaign CRUD, follow-gate settings,
 tracked links and analytics, DM logs, webhook and worker diagnostics, the inbox,
 workspace members, invitations, templates, Zernio scheduled-post syncing, and
 explicit send/reply actions.
 
-The server never returns Instagram access tokens. It scopes every database
-operation to `OPENREPLY_MCP_WORKSPACE_ID`, and write operations verify that
-`OPENREPLY_MCP_USER_ID` is an owner or admin in that workspace. Keep this MCP
-server local; do not publish its stdio process or give it a remote transport
-without adding transport authentication and request-scoped authorization.
+The server never returns Instagram access tokens. Each bearer token is bound to
+its issuing user and workspace, and write operations verify that user is still
+an owner or admin. Tokens are stored only as hashes, rate-limited, audited, and
+can be revoked from Settings → Remote MCP access.
 
-Add the following to the coding agent's MCP configuration, replacing the path
-and workspace ID with your values:
+Create a token in Settings, store it as `OPENREPLY_MCP_TOKEN` in the client
+environment, then add the remote endpoint to the coding agent's MCP configuration:
 
 ```json
 {
   "mcpServers": {
     "openreply": {
-      "command": "npm",
-      "args": ["run", "mcp"],
-      "cwd": "/absolute/path/to/openreply",
-      "env": {
-        "OPENREPLY_MCP_WORKSPACE_ID": "your-workspace-id",
-        "OPENREPLY_MCP_USER_ID": "your-owner-or-admin-user-id"
+      "url": "https://openreply-coral-six.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${OPENREPLY_MCP_TOKEN}"
       }
     }
   }
 }
 ```
 
-The server loads the repository's `.env` file, so the process still needs the
-same `DATABASE_URL`, `REDIS_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`,
-`ENCRYPTION_KEY`, and Instagram/Meta variables as the web app. The workspace ID
-can be read from the `Workspace` table. Use that workspace's `ownerId` (or a
-member's `User.id`) for `OPENREPLY_MCP_USER_ID`; members can use read tools but
-cannot create campaigns, manage accounts, or change workspace access. Do not
-put secrets in the repository or in a checked-in MCP configuration file.
+The exact secret interpolation syntax varies by client. Prefer the client's
+environment or encrypted credential store and never put the plaintext token in
+the repository. Members can use read tools; live and administrative writes still
+require the token owner to have an owner or admin role.
+
+For self-hosted development, `npm run mcp` still starts the local stdio transport.
+It uses `OPENREPLY_MCP_WORKSPACE_ID` and `OPENREPLY_MCP_USER_ID` from the local
+environment and otherwise exposes the same tools.
 
 Tools that change live automation, workspace access, or send external Instagram
 messages require an explicit `confirm: true` argument. Instagram OAuth consent
