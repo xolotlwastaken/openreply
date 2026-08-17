@@ -45,6 +45,26 @@ interface WorkspaceMembersData {
   }>;
 }
 
+interface ZernioData {
+  id: string;
+  enabled: boolean;
+  webhookReady: boolean;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  mappings: Array<{
+    instagramAccountId: string;
+    instagramUsername: string;
+    zernioAccountId: string;
+    zernioUsername: string | null;
+  }>;
+  instagramAccounts: Array<{ id: string; username: string }>;
+  zernioAccounts: Array<{
+    id: string;
+    username: string | null;
+    displayName: string | null;
+  }>;
+}
+
 export default function SettingsPage() {
   const [data, setData] = useState<SettingsData | null>(null);
   const [membersData, setMembersData] = useState<WorkspaceMembersData | null>(
@@ -55,15 +75,39 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [zernioData, setZernioData] = useState<ZernioData | null>(null);
+  const [zernioAvailable, setZernioAvailable] = useState(true);
+  const [zernioApiKey, setZernioApiKey] = useState("");
+  const [zernioError, setZernioError] = useState<string | null>(null);
+  const [mappingDraft, setMappingDraft] = useState<Record<string, string>>({});
 
   useEffect(() => {
     Promise.all([
       fetch("/api/dashboard/stats").then((res) => res.json()),
       fetch("/api/workspace/members").then((res) => res.json()),
+      fetch("/api/integrations/zernio", { cache: "no-store" }).then(async (res) => ({
+        status: res.status,
+        payload: await res.json(),
+      })),
     ])
-      .then(([statsPayload, membersPayload]) => {
+      .then(([statsPayload, membersPayload, zernioResult]) => {
         if (statsPayload.success) setData(statsPayload.data);
         if (membersPayload.success) setMembersData(membersPayload.data);
+        if (zernioResult.status === 404) setZernioAvailable(false);
+        if (zernioResult.payload.success) {
+          const next = zernioResult.payload.data as ZernioData | null;
+          setZernioData(next);
+          if (next) {
+            setMappingDraft(
+              Object.fromEntries(
+                next.mappings.map((mapping) => [
+                  mapping.instagramAccountId,
+                  mapping.zernioAccountId,
+                ])
+              )
+            );
+          }
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -115,6 +159,74 @@ export default function SettingsPage() {
       body: JSON.stringify({ invitationId }),
     });
     await refreshMembers();
+    setBusy(null);
+  }
+
+  async function refreshZernio() {
+    const response = await fetch("/api/integrations/zernio", { cache: "no-store" });
+    const payload = await response.json();
+    if (payload.success) {
+      const next = payload.data as ZernioData | null;
+      setZernioData(next);
+      if (next) {
+        setMappingDraft(
+          Object.fromEntries(
+            next.mappings.map((mapping) => [
+              mapping.instagramAccountId,
+              mapping.zernioAccountId,
+            ])
+          )
+        );
+      }
+    }
+  }
+
+  async function connectZernio(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy("zernio-connect");
+    setZernioError(null);
+    const response = await fetch("/api/integrations/zernio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: zernioApiKey }),
+    });
+    const payload = await response.json();
+    if (payload.success) {
+      setZernioApiKey("");
+      await refreshZernio();
+    } else {
+      setZernioError(payload.error ?? "Could not connect Zernio");
+    }
+    setBusy(null);
+  }
+
+  async function saveZernioMappings() {
+    setBusy("zernio-map");
+    setZernioError(null);
+    const mappings = Object.entries(mappingDraft)
+      .filter(([, zernioAccountId]) => Boolean(zernioAccountId))
+      .map(([instagramAccountId, zernioAccountId]) => ({
+        instagramAccountId,
+        zernioAccountId,
+      }));
+    const response = await fetch("/api/integrations/zernio", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mappings }),
+    });
+    const payload = await response.json();
+    if (payload.success) await refreshZernio();
+    else setZernioError(payload.error ?? "Could not save Zernio mappings");
+    setBusy(null);
+  }
+
+  async function syncZernio() {
+    setBusy("zernio-sync");
+    setZernioError(null);
+    const response = await fetch("/api/integrations/zernio/sync", { method: "POST" });
+    const payload = await response.json();
+    if (payload.success) await refreshZernio();
+    else setZernioError(payload.error ?? "Zernio sync failed");
     setBusy(null);
   }
 
@@ -217,6 +329,104 @@ export default function SettingsPage() {
           </a>
         </div>
       </section>
+
+      {zernioAvailable && (
+        <section className="panel rounded p-4 sm:p-6">
+          <h2 className="text-base font-semibold">Zernio Scheduled Posts</h2>
+          <p className="mt-1 text-xs text-muted">
+            Import future Instagram posts and bind waiting automations when Zernio publishes them.
+          </p>
+
+          {!zernioData ? (
+            <form onSubmit={connectZernio} className="mt-5 space-y-3">
+              <label className="block text-sm font-medium text-foreground" htmlFor="zernio-api-key">
+                Zernio API key
+              </label>
+              <input
+                id="zernio-api-key"
+                type="password"
+                autoComplete="off"
+                value={zernioApiKey}
+                onChange={(event) => setZernioApiKey(event.target.value)}
+                placeholder="Paste your Zernio API key"
+                className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                required
+              />
+              <button
+                type="submit"
+                disabled={busy === "zernio-connect"}
+                className="rounded bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {busy === "zernio-connect" ? "Connecting..." : "Connect Zernio"}
+              </button>
+            </form>
+          ) : (
+            <div className="mt-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-surface/70 p-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {zernioData.webhookReady ? "Webhook ready" : "Webhook setup incomplete"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Last synced {zernioData.lastSyncedAt
+                      ? new Date(zernioData.lastSyncedAt).toLocaleString()
+                      : "never"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={syncZernio}
+                  disabled={busy === "zernio-sync"}
+                  className="rounded border border-border px-3 py-2 text-sm font-medium text-foreground disabled:opacity-50"
+                >
+                  {busy === "zernio-sync" ? "Syncing..." : "Sync now"}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Account mapping
+                </p>
+                {zernioData.instagramAccounts.map((account) => (
+                  <label key={account.id} className="grid gap-2 sm:grid-cols-2 sm:items-center">
+                    <span className="text-sm text-foreground">@{account.username}</span>
+                    <select
+                      value={mappingDraft[account.id] ?? ""}
+                      onChange={(event) =>
+                        setMappingDraft((current) => ({
+                          ...current,
+                          [account.id]: event.target.value,
+                        }))
+                      }
+                      className="rounded border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                    >
+                      <option value="">Choose Zernio account</option>
+                      {zernioData.zernioAccounts.map((zernioAccount) => (
+                        <option key={zernioAccount.id} value={zernioAccount.id}>
+                          {zernioAccount.username || zernioAccount.displayName || zernioAccount.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                <button
+                  type="button"
+                  onClick={saveZernioMappings}
+                  disabled={busy === "zernio-map"}
+                  className="rounded border border-border px-4 py-2 text-sm font-medium text-foreground disabled:opacity-50"
+                >
+                  {busy === "zernio-map" ? "Saving..." : "Save mapping"}
+                </button>
+              </div>
+            </div>
+          )}
+          {(zernioError || zernioData?.lastError) && (
+            <p className="mt-4 rounded border border-error/20 bg-error/5 p-3 text-sm text-error">
+              {zernioError ?? zernioData?.lastError}
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="panel rounded p-4 sm:p-6">
         <h2 className="text-base font-semibold mb-6">Team</h2>

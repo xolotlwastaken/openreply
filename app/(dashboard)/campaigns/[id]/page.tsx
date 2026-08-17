@@ -18,6 +18,13 @@ interface Campaign {
   name: string;
   postId: string | null;
   postUrl: string | null;
+  scheduledPostId: string | null;
+  scheduledPost: {
+    status: string;
+    scheduledFor: string | null;
+    mediaPreviewUrl: string | null;
+    content: string | null;
+  } | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
   keywords: string[];
@@ -77,6 +84,9 @@ export default function CampaignDetailPage() {
         const found = (payload.data as Campaign[]).find((c) => c.id === id);
         if (!found) return setNotFound(true);
         setCampaign(found);
+        if (!found.postId && found.scheduledPost?.mediaPreviewUrl) {
+          setPostThumb(found.scheduledPost.mediaPreviewUrl);
+        }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -155,6 +165,12 @@ export default function CampaignDetailPage() {
     ? "Any post or reel"
     : campaign.pendingNextReel
       ? "Your next reel"
+      : campaign.scheduledPostId && !campaign.postId
+        ? `Scheduled via Zernio${
+            campaign.scheduledPost?.scheduledFor
+              ? ` for ${new Date(campaign.scheduledPost.scheduledFor).toLocaleString()}`
+              : ""
+          }`
       : "A specific post or reel";
   const matchText = campaign.matchAnyWord
     ? "Any comment"
@@ -203,7 +219,11 @@ export default function CampaignDetailPage() {
               />
             ) : (
               <div className="grid h-14 w-14 place-items-center rounded bg-surface-hover text-[10px] text-muted">
-                {campaign.matchAnyPost || campaign.pendingNextReel ? "Any" : "Post"}
+                {campaign.scheduledPostId && !campaign.postId
+                  ? "Waiting"
+                  : campaign.matchAnyPost || campaign.pendingNextReel
+                    ? "Any"
+                    : "Post"}
               </div>
             )}
             <span className="text-sm text-foreground">{trigger}</span>

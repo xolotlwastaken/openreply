@@ -60,3 +60,6 @@ in the repo. Full descriptions are in [setup.md](setup.md#environment-variables)
 `REDIS_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `META_GRAPH_API_VERSION`,
 `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `FACEBOOK_APP_SECRET`,
 `WEBHOOK_VERIFY_TOKEN`.
+Set `ZERNIO_INTEGRATION_ENABLED=true` on both processes when using the optional
+Zernio scheduled-post integration; `ZERNIO_SYNC_INTERVAL_MS` controls its worker
+repair interval.

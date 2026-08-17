@@ -32,6 +32,14 @@ interface LoadedCampaign {
   name: string;
   postId: string | null;
   postUrl: string | null;
+  scheduledPostId: string | null;
+  scheduledPost?: {
+    id: string;
+    content: string | null;
+    mediaPreviewUrl: string | null;
+    scheduledFor: string | null;
+    status: string;
+  } | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
   keywords: string[];
@@ -146,6 +154,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
+  const [scheduledPostId, setScheduledPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
   const [postThumb, setPostThumb] = useState<string | null>(null);
   const [postCaption, setPostCaption] = useState("");
@@ -256,6 +265,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         );
         setPostId(c.postId);
         setPostUrl(c.postUrl);
+        setScheduledPostId(c.scheduledPostId);
+        if (c.scheduledPost) {
+          setPostThumb(c.scheduledPost.mediaPreviewUrl);
+          setPostCaption(c.scheduledPost.content ?? "");
+        }
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
@@ -324,6 +338,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setName(row.name ?? "");
     setTriggerScope("specific");
     setPostId(null);
+    setScheduledPostId(null);
     setPostUrl(null);
     setPostThumb(null);
     setPostCaption("");
@@ -371,9 +386,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     id: string,
     url?: string,
     thumb?: string,
-    caption?: string
+    caption?: string,
+    selectedScheduledPostId?: string
   ) {
-    setPostId(id);
+    setPostId(id || null);
+    setScheduledPostId(selectedScheduledPostId ?? null);
     setPostUrl(url ?? null);
     setPostThumb(thumb ?? null);
     setPostCaption(caption ?? "");
@@ -387,7 +404,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setError(null);
 
     if (!selectedAccountId) return setError("Connect an Instagram account first.");
-    if (triggerScope === "specific" && !postId)
+    if (triggerScope === "specific" && !postId && !scheduledPostId)
       return setError("Pick a post or reel to trigger the campaign.");
     if (matchMode === "specific" && keywords.length === 0)
       return setError("Add at least one keyword, or switch to any word.");
@@ -402,6 +419,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       instagramAccountId: selectedAccountId,
       postId: triggerScope === "specific" ? postId : null,
       postUrl: triggerScope === "specific" ? postUrl : null,
+      scheduledPostId:
+        triggerScope === "specific" ? scheduledPostId : null,
       matchAnyPost: triggerScope === "any",
       pendingNextReel: triggerScope === "next",
       matchAnyWord: matchMode === "any",
@@ -676,6 +695,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <div className="rounded-lg border border-border p-2">
               <PostPicker
                 selectedPostId={postId}
+                selectedScheduledPostId={scheduledPostId}
                 instagramAccountId={selectedAccountId}
                 usedPostIds={usedPosts}
                 onSelect={handlePostSelect}

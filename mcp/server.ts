@@ -26,6 +26,7 @@ import { buildTrackedUrl } from "@/lib/tracking/message";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
 import { canManageWorkspace } from "@/lib/workspace-access";
+import { syncZernioPostForWorkspace } from "@/lib/zernio/sync";
 
 /**
  * OpenReply's MCP server is intentionally stdio-only. A coding agent that can
@@ -54,6 +55,7 @@ const campaignFields = {
   instagramAccountId: z.string().min(1).optional(),
   postId: z.string().min(1).nullable().optional(),
   postUrl: z.string().url().nullable().optional(),
+  scheduledPostId: z.string().min(1).nullable().optional(),
   pendingNextReel: z.boolean().default(false),
   matchAnyPost: z.boolean().default(false),
   keywords: z.array(z.string().min(1).max(50)).max(10).default([]),
@@ -82,6 +84,7 @@ const campaignUpdateFields = {
   goal: campaignFields.goal,
   postId: campaignFields.postId,
   postUrl: campaignFields.postUrl,
+  scheduledPostId: campaignFields.scheduledPostId,
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
   keywords: campaignFields.keywords.optional(),
@@ -219,6 +222,7 @@ async function campaignById(workspaceId: string, id: string) {
 
 function validateCampaignInput(input: {
   postId?: string | null;
+  scheduledPostId?: string | null;
   matchAnyPost: boolean;
   pendingNextReel: boolean;
   keywords: string[];
@@ -232,7 +236,13 @@ function validateCampaignInput(input: {
   followUpEnabled: boolean;
   followUpMessage?: string | null;
 }) {
-  if (!input.matchAnyPost && !input.pendingNextReel && !input.postId) {
+  const scopes = [
+    input.matchAnyPost,
+    input.pendingNextReel,
+    Boolean(input.postId),
+    Boolean(input.scheduledPostId),
+  ].filter(Boolean).length;
+  if (scopes !== 1) {
     throw new Error("Choose a post, match any post, or target the next reel");
   }
   if (!input.matchAnyWord && input.keywords.length === 0) {
@@ -258,7 +268,19 @@ function publicReplyValues(enabled: boolean, messages: string[]) {
 async function createCampaign(workspaceId: string, input: CampaignInput) {
   validateCampaignInput(input);
   const account = await getAccount(workspaceId, input.instagramAccountId);
-  const isSpecificPost = !input.pendingNextReel && !input.matchAnyPost;
+  const scheduledPost = input.scheduledPostId
+    ? await prisma.scheduledPost.findFirst({
+        where: {
+          id: input.scheduledPostId,
+          workspaceId,
+          instagramAccountId: account.id,
+        },
+      })
+    : null;
+  if (input.scheduledPostId && !scheduledPost) {
+    throw new Error("Scheduled post not found for this Instagram account");
+  }
+  const isSpecificPost = !input.pendingNextReel && !input.matchAnyPost && !scheduledPost;
   const reply = publicReplyValues(input.publicReplyEnabled, input.publicReplyMessages);
   const links = input.trackedLinks.map((link, index) => ({
     workspaceId,
@@ -271,8 +293,9 @@ async function createCampaign(workspaceId: string, input: CampaignInput) {
     data: {
       name: input.name,
       goal: input.goal?.trim() || null,
-      postId: isSpecificPost ? input.postId ?? null : null,
-      postUrl: isSpecificPost ? input.postUrl ?? null : null,
+      postId: scheduledPost?.platformPostId ?? (isSpecificPost ? input.postId ?? null : null),
+      postUrl: scheduledPost?.platformPostUrl ?? (isSpecificPost ? input.postUrl ?? null : null),
+      scheduledPostId: scheduledPost?.id ?? null,
       pendingNextReel: input.pendingNextReel,
       matchAnyPost: input.matchAnyPost,
       keywords: input.matchAnyWord ? [] : input.keywords,
@@ -330,6 +353,21 @@ async function updateCampaign(workspaceId: string, id: string, input: CampaignUp
   if (input.matchAnyPost === true || input.pendingNextReel === true) {
     data.postId = null;
     data.postUrl = null;
+    data.scheduledPost = { disconnect: true };
+  } else if (input.scheduledPostId) {
+    const scheduledPost = await prisma.scheduledPost.findFirst({
+      where: {
+        id: input.scheduledPostId,
+        workspaceId,
+        instagramAccountId: existing.instagramAccountId,
+      },
+    });
+    if (!scheduledPost) throw new Error("Scheduled post not found for this Instagram account");
+    data.scheduledPost = { connect: { id: scheduledPost.id } };
+    data.postId = scheduledPost.platformPostId;
+    data.postUrl = scheduledPost.platformPostUrl;
+  } else if (input.postId) {
+    data.scheduledPost = { disconnect: true };
   }
   if (input.publicReplyMessages !== undefined) {
     Object.assign(data, publicReplyValues(input.publicReplyMessages.length > 0, input.publicReplyMessages));
@@ -556,6 +594,46 @@ server.registerTool("openreply_list_instagram_posts", {
     const token = decryptToken(account.accessToken);
     const media = all ? await getAllUserMedia(token, 300) : await getUserMedia(token, Math.min(limit, 50));
     return textResult({ success: true, account: accountSummary(account), posts: media });
+  } catch (error) {
+    return errorResult(error);
+  }
+});
+
+server.registerTool("openreply_list_zernio_scheduled_posts", {
+  description: "List Zernio Instagram posts already synced into OpenReply, including their scheduled time and binding status.",
+  inputSchema: accountInput,
+}, async ({ workspaceId, instagramAccountId }) => {
+  try {
+    const resolved = configuredWorkspaceId(workspaceId);
+    const account = instagramAccountId
+      ? await getAccount(resolved, instagramAccountId)
+      : null;
+    const posts = await prisma.scheduledPost.findMany({
+      where: {
+        workspaceId: resolved,
+        ...(account ? { instagramAccountId: account.id } : {}),
+      },
+      orderBy: [{ scheduledFor: "asc" }, { createdAt: "asc" }],
+    });
+    return textResult({ success: true, posts });
+  } catch (error) {
+    return errorResult(error);
+  }
+});
+
+server.registerTool("openreply_sync_zernio_post", {
+  description: "Fetch one Zernio post by its Zernio post ID and create or refresh its OpenReply scheduled-post placeholder. Returns the scheduledPostId to pass to openreply_create_campaign.",
+  inputSchema: {
+    ...workspaceInput,
+    zernioPostId: z.string().min(1),
+    confirm: z.literal(true).describe("Required because this writes the scheduled-post record"),
+  },
+}, async ({ workspaceId, zernioPostId }) => {
+  try {
+    const resolved = configuredWorkspaceId(workspaceId);
+    await requireAdmin(resolved);
+    const posts = await syncZernioPostForWorkspace(resolved, zernioPostId);
+    return textResult({ success: true, posts });
   } catch (error) {
     return errorResult(error);
   }

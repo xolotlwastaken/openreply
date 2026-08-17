@@ -37,6 +37,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 - Inbox. Read your Instagram DM conversations and reply from the dashboard, inside Meta's 24-hour messaging window. Cached so it loads instantly on repeat visits.
 - DM logs. Every send, skip, and failure is logged with a reason.
 - Self-comment filtering. Your own comments never trigger a reply, since Meta rejects DMing yourself anyway.
+- Optional Zernio scheduling bridge. Configure a campaign against a future Zernio post, then bind it to the exact Instagram media id when publishing completes.
 
 ## How it works
 

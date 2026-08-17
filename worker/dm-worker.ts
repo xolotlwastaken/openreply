@@ -1,6 +1,8 @@
 import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
+import { zernioIntegrationEnabled } from "@/lib/zernio/config";
+import { reconcileAllZernioConnections } from "@/lib/zernio/sync";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -39,14 +41,30 @@ async function poll() {
   }
 }
 
+async function pollZernio() {
+  if (!zernioIntegrationEnabled()) return;
+  try {
+    await reconcileAllZernioConnections();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[DM Worker] Zernio reconciliation failed:", message);
+  }
+}
+
 // Kick off one sweep shortly after boot, then on a fixed interval.
 setTimeout(() => void poll(), 10_000);
 const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
+setTimeout(() => void pollZernio(), 15_000);
+const zernioPollTimer = setInterval(
+  () => void pollZernio(),
+  Number(process.env.ZERNIO_SYNC_INTERVAL_MS ?? 5 * 60_000)
+);
 
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
+  clearInterval(zernioPollTimer);
   await worker.close();
   process.exit(0);
 }

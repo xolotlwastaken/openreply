@@ -22,6 +22,7 @@ const createAutomationSchema = z
     instagramAccountId: z.string().min(1).optional().nullable(),
     postId: z.string().min(1).optional().nullable(),
     postUrl: z.string().url().optional().nullable(),
+    scheduledPostId: z.string().min(1).optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
     matchAnyPost: z.boolean().optional().default(false),
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
@@ -61,9 +62,12 @@ const createAutomationSchema = z
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })
-  // A campaign must target a specific post, any post, or the next reel.
+  // Exactly one post scope keeps a waiting scheduled post isolated from the
+  // existing specific/any/next-reel behavior.
   .refine(
-    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
+    (d) =>
+      [d.matchAnyPost, d.pendingNextReel, Boolean(d.postId), Boolean(d.scheduledPostId)]
+        .filter(Boolean).length === 1,
     { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
   )
   // And it must match either specific words or any word.
@@ -85,6 +89,7 @@ const updateAutomationSchema = z.object({
   goal: z.string().min(1).max(120).optional().nullable(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
+  scheduledPostId: z.string().min(1).optional().nullable(),
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
@@ -154,6 +159,16 @@ export async function GET(request: NextRequest) {
           _count: { select: { clicks: true } },
         },
         orderBy: { createdAt: "asc" },
+      },
+      scheduledPost: {
+        select: {
+          id: true,
+          providerPostId: true,
+          scheduledFor: true,
+          status: true,
+          mediaPreviewUrl: true,
+          content: true,
+        },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -341,6 +356,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const scheduledPost = parsed.data.scheduledPostId
+    ? await prisma.scheduledPost.findFirst({
+        where: {
+          id: parsed.data.scheduledPostId,
+          workspaceId,
+          instagramAccountId: instagramAccount.id,
+        },
+      })
+    : null;
+  if (parsed.data.scheduledPostId && !scheduledPost) {
+    return NextResponse.json(
+      { success: false, error: "Scheduled post not found for this Instagram account" },
+      { status: 400 }
+    );
+  }
+
   const { trackedDestinationUrl, secondaryDestinationUrl, secondaryButtonLabel } =
     parsed.data;
 
@@ -372,7 +403,8 @@ export async function POST(request: NextRequest) {
   const { pendingNextReel, matchAnyPost, matchAnyWord, openingDmEnabled } =
     parsed.data;
   // A post is only stored for the "specific post" trigger.
-  const isSpecificPost = !pendingNextReel && !matchAnyPost;
+  const isScheduledPost = Boolean(scheduledPost);
+  const isSpecificPost = !pendingNextReel && !matchAnyPost && !isScheduledPost;
   const publicReplyList = (
     parsed.data.publicReplyMessages.length > 0
       ? parsed.data.publicReplyMessages
@@ -388,8 +420,17 @@ export async function POST(request: NextRequest) {
       name: parsed.data.name,
       goal: parsed.data.goal,
       // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
-      postId: isSpecificPost ? parsed.data.postId : null,
-      postUrl: isSpecificPost ? parsed.data.postUrl : null,
+      postId: isScheduledPost
+        ? scheduledPost?.platformPostId ?? null
+        : isSpecificPost
+          ? parsed.data.postId
+          : null,
+      postUrl: isScheduledPost
+        ? scheduledPost?.platformPostUrl ?? null
+        : isSpecificPost
+          ? parsed.data.postUrl
+          : null,
+      scheduledPostId: scheduledPost?.id ?? null,
       pendingNextReel,
       matchAnyPost,
       keywords: matchAnyWord ? [] : parsed.data.keywords,
@@ -503,6 +544,28 @@ export async function PATCH(request: NextRequest) {
     ...automationData
   } = parsed.data;
 
+  if (automationData.scheduledPostId) {
+    const scheduledPost = await prisma.scheduledPost.findFirst({
+      where: {
+        id: automationData.scheduledPostId,
+        workspaceId,
+        instagramAccountId: existing.instagramAccountId,
+      },
+    });
+    if (!scheduledPost) {
+      return NextResponse.json(
+        { success: false, error: "Scheduled post not found for this Instagram account" },
+        { status: 400 }
+      );
+    }
+    automationData.postId = scheduledPost.platformPostId;
+    automationData.postUrl = scheduledPost.platformPostUrl;
+    automationData.matchAnyPost = false;
+    automationData.pendingNextReel = false;
+  } else if (automationData.postId) {
+    automationData.scheduledPostId = null;
+  }
+
   // Keep dependent fields consistent: any-word clears keywords; a disabled
   // opening DM clears its message and button.
   if (automationData.matchAnyWord === true) automationData.keywords = [];
@@ -522,6 +585,7 @@ export async function PATCH(request: NextRequest) {
   if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {
     automationData.postId = null;
     automationData.postUrl = null;
+    automationData.scheduledPostId = null;
   }
   // Keep the public-reply variations list and the legacy single field in sync.
   if (automationData.publicReplyMessages !== undefined) {

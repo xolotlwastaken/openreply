@@ -18,6 +18,12 @@ interface Campaign {
   goal: string | null;
   postId: string | null;
   postUrl: string | null;
+  scheduledPostId: string | null;
+  scheduledPost: {
+    status: string;
+    scheduledFor: string | null;
+    mediaPreviewUrl: string | null;
+  } | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
   keywords: string[];
@@ -440,6 +446,14 @@ export default function CampaignsPage() {
                   </a>
                 )
               )}
+              {!auto.postId && auto.scheduledPost?.mediaPreviewUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={auto.scheduledPost.mediaPreviewUrl}
+                  alt="Scheduled campaign post"
+                  className="h-12 w-12 shrink-0 rounded border border-border object-cover opacity-80"
+                />
+              )}
               <div className="min-w-[12rem] flex-1">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h3 className="text-sm font-semibold truncate">{auto.name}</h3>
@@ -458,6 +472,11 @@ export default function CampaignsPage() {
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-warning">
                       Waiting for next reel
+                    </span>
+                  )}
+                  {auto.scheduledPostId && !auto.postId && (
+                    <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-warning">
+                      Waiting for Zernio publish
                     </span>
                   )}
                   {auto.requireFollow && (

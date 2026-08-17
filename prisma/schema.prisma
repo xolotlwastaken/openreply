@@ -84,6 +84,9 @@ model Workspace {
   linkClicks        LinkClick[]
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
+  zernioConnection  ZernioConnection?
+  zernioAccountMappings ZernioAccountMapping[]
+  scheduledPosts    ScheduledPost[]
 
   @@index([ownerId])
 }
@@ -141,6 +144,8 @@ model InstagramAccount {
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
+  zernioMappings    ZernioAccountMapping[]
+  scheduledPosts    ScheduledPost[]
 
   @@index([workspaceId])
 }
@@ -174,6 +179,7 @@ model Automation {
   goal           String?
   postId         String?
   postUrl        String?
+  scheduledPostId String?
   pendingNextReel Boolean @default(false)
   matchAnyPost   Boolean @default(false)
   keywords       String[]
@@ -211,10 +217,105 @@ model Automation {
   dmLogs           DmLog[]
   trackedLinks     TrackedLink[]
   linkClicks       LinkClick[]
+  scheduledPost    ScheduledPost? @relation(fields: [scheduledPostId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([instagramAccountId])
   @@index([postId])
+  @@index([scheduledPostId])
+}
+
+/// Workspace-scoped credentials and webhook registration for Zernio. Secrets
+/// use the same AES-256-GCM envelope as Instagram access tokens.
+model ZernioConnection {
+  id                String   @id @default(cuid())
+  workspaceId       String   @unique
+  encryptedApiKey   String
+  encryptedWebhookSecret String
+  webhookId         String?
+  enabled           Boolean  @default(true)
+  lastSyncedAt      DateTime?
+  lastError         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace         Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accountMappings   ZernioAccountMapping[]
+  scheduledPosts    ScheduledPost[]
+  webhookEvents     ZernioWebhookEvent[]
+}
+
+/// Explicit mapping prevents a post from being attached by caption, display
+/// name, or schedule time. One OpenReply Instagram account maps to one Zernio
+/// social account within a workspace.
+model ZernioAccountMapping {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  zernioConnectionId String
+  instagramAccountId String   @unique
+  zernioAccountId    String
+  zernioUsername     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  zernioConnection ZernioConnection @relation(fields: [zernioConnectionId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([zernioConnectionId, zernioAccountId])
+  @@index([workspaceId])
+}
+
+model ScheduledPost {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  zernioConnectionId String
+  instagramAccountId String
+  providerPostId     String
+  providerAccountId  String
+  title              String?
+  content            String?
+  scheduledFor       DateTime?
+  timezone           String?
+  mediaPreviewUrl    String?
+  status              ScheduledPostStatus @default(SCHEDULED)
+  platformPostId     String?
+  platformPostUrl    String?
+  errorMessage       String?
+  publishedAt        DateTime?
+  lastSyncedAt       DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  zernioConnection ZernioConnection @relation(fields: [zernioConnectionId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  automations      Automation[]
+
+  @@unique([zernioConnectionId, providerPostId, providerAccountId])
+  @@index([workspaceId])
+  @@index([instagramAccountId, status])
+  @@index([providerPostId])
+  @@index([platformPostId])
+}
+
+/// Zernio retries webhook deliveries, so its stable event id is the primary
+/// key and makes processing idempotent.
+model ZernioWebhookEvent {
+  eventId            String   @id
+  zernioConnectionId String
+  event              String
+  payload            Json
+  status             WebhookStatus @default(PENDING)
+  errorMessage       String?
+  createdAt          DateTime @default(now())
+  processedAt        DateTime?
+
+  zernioConnection ZernioConnection @relation(fields: [zernioConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([zernioConnectionId])
+  @@index([event])
+  @@index([status])
 }
 
 model DmLog {
@@ -372,6 +473,16 @@ enum WebhookStatus {
   PENDING
   PROCESSED
   FAILED
+}
+
+enum ScheduledPostStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  PARTIAL
+  CANCELLED
+  DELETED
 }
 
 enum OperationalEventSource {

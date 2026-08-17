@@ -99,6 +99,8 @@ Copy `.env.example` to `.env` for local work, or set these in Vercel and Railway
 | `INSTAGRAM_APP_SECRET` | From the Meta app. |
 | `FACEBOOK_APP_SECRET` | From the Meta app. |
 | `WEBHOOK_VERIFY_TOKEN` | Any random string. You paste the same value into Meta's webhook config. |
+| `ZERNIO_INTEGRATION_ENABLED` | Set to `true` on both the web app and worker to enable scheduled-post syncing. It defaults to off as a deployment kill switch. |
+| `ZERNIO_SYNC_INTERVAL_MS` | Optional worker reconciliation interval. Defaults to `300000` (5 minutes). |
 
 `ENCRYPTION_KEY` must be exactly 64 hex characters or the app throws on boot.
 
@@ -109,6 +111,34 @@ Optional, for tuning the polling reconciler (defaults are fine to start):
 | `COMMENT_POLL_INTERVAL_MS` | `300000` | How often the worker sweeps for missed comments (5 min). |
 | `COMMENT_POLL_MAX_PER_SWEEP` | `30` | Max new comments each campaign acts on per sweep. Keep it conservative; higher gets closer to Instagram's rate limits. |
 | `COMMENT_POLL_LOOKBACK_HOURS` | `72` | How far back a sweep considers comments. |
+
+## Optional: connect Zernio scheduled posts
+
+This integration lets an automation be configured before its Instagram post is
+published. It is additive: existing specific-post, any-post, and next-reel
+campaigns keep their current fields and worker matching behavior.
+
+1. Set `ZERNIO_INTEGRATION_ENABLED=true` on both the web app and worker, then
+   deploy the database migration and application.
+2. In OpenReply, open Settings → Zernio Scheduled Posts and paste a Zernio API
+   key. The key and generated webhook secret are encrypted with `ENCRYPTION_KEY`.
+3. Confirm each OpenReply Instagram account maps to the correct Zernio Instagram
+   account. Exact usernames are mapped automatically; ambiguous accounts require
+   an explicit selection.
+4. Click Sync now. Future Zernio posts appear in the campaign post picker.
+5. Create the campaign normally and choose a scheduled card. It remains waiting
+   until Zernio supplies the platform-native Instagram media id.
+
+OpenReply registers a signed Zernio webhook automatically. The always-on worker
+also checks every five minutes to recover missed webhook deliveries and detect
+reschedules. Turning `ZERNIO_INTEGRATION_ENABLED` back to `false` stops only
+Zernio webhooks and reconciliation; already-bound Instagram campaigns continue
+to use their normal `postId` and remain live.
+
+For coding agents, schedule the post with the Zernio MCP, then call
+`openreply_sync_zernio_post` with the returned Zernio post id. Pass the returned
+OpenReply `scheduledPostId` to `openreply_create_campaign`. The campaign can be
+reviewed immediately and is bound automatically at publication.
 
 ## The Meta app
 
@@ -221,7 +251,8 @@ OpenReply includes a local stdio MCP server for agents such as Codex. It exposes
 the same operational surface as the dashboard: account and profile inspection,
 media and insights, webhook subscription, campaign CRUD, follow-gate settings,
 tracked links and analytics, DM logs, webhook and worker diagnostics, the inbox,
-workspace members, invitations, templates, and explicit send/reply actions.
+workspace members, invitations, templates, Zernio scheduled-post syncing, and
+explicit send/reply actions.
 
 The server never returns Instagram access tokens. It scopes every database
 operation to `OPENREPLY_MCP_WORKSPACE_ID`, and write operations verify that
