@@ -98,6 +98,7 @@ export default function SettingsPage() {
   const [newMcpToken, setNewMcpToken] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [copiedMcpValue, setCopiedMcpValue] = useState<string | null>(null);
+  const [confirmingMcpTokenId, setConfirmingMcpTokenId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -275,7 +276,8 @@ export default function SettingsPage() {
   }
 
   async function revokeMcpToken(tokenId: string) {
-    if (!confirm("Revoke this MCP token? Any agent using it will lose access immediately.")) {
+    if (confirmingMcpTokenId !== tokenId) {
+      setConfirmingMcpTokenId(tokenId);
       return;
     }
     setBusy(`mcp:${tokenId}`);
@@ -288,6 +290,7 @@ export default function SettingsPage() {
     const payload = await response.json();
     if (payload.success) setMcpData(payload.data);
     else setMcpError(payload.error ?? "Could not revoke MCP access token");
+    setConfirmingMcpTokenId(null);
     setBusy(null);
   }
 
@@ -590,7 +593,11 @@ export default function SettingsPage() {
                   disabled={busy === `mcp:${token.id}`}
                   className="rounded border border-error/20 px-3 py-1.5 text-xs font-medium text-error hover:bg-error/10 disabled:opacity-50"
                 >
-                  {busy === `mcp:${token.id}` ? "Revoking…" : "Revoke"}
+                  {busy === `mcp:${token.id}`
+                    ? "Revoking…"
+                    : confirmingMcpTokenId === token.id
+                      ? "Confirm revoke"
+                      : "Revoke"}
                 </button>
               )}
             </div>
