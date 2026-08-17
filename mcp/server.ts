@@ -27,6 +27,7 @@ import { generateTrackedLinkSlug } from "@/lib/tracking/server";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
 import { canManageWorkspace } from "@/lib/workspace-access";
 import { syncZernioPostForWorkspace } from "@/lib/zernio/sync";
+import { MCP_SERVER_INSTRUCTIONS } from "@/lib/mcp-docs";
 
 /**
  * OpenReply's MCP server is intentionally stdio-only. A coding agent that can
@@ -409,7 +410,10 @@ async function requireAdmin(workspaceId: string) {
   }
 }
 
-const server = new McpServer({ name: "openreply", version: "0.1.0" });
+const server = new McpServer(
+  { name: "openreply", version: "0.2.0" },
+  { instructions: MCP_SERVER_INSTRUCTIONS },
+);
 
 server.registerTool("openreply_health", {
   description: "Check PostgreSQL, Redis, queue depth, and DM worker heartbeat.",

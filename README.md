@@ -93,6 +93,12 @@ loads `.env`, scopes all operations to one workspace, checks that the configured
 user is an owner/admin for write operations, never returns Instagram tokens, and
 requires `confirm: true` for destructive or externally visible actions.
 
+Public, agent-readable installation documentation is available at
+[openreply-coral-six.vercel.app/docs/mcp/agent.md](https://openreply-coral-six.vercel.app/docs/mcp/agent.md).
+Give that URL to a coding agent and ask it to install OpenReply MCP. A
+human-readable version is available at
+[openreply-coral-six.vercel.app/docs/mcp](https://openreply-coral-six.vercel.app/docs/mcp).
+
 ## Set it up with your AI assistant
 
 If you use Claude Code, Cursor, or a similar tool, the Meta setup is a lot faster with an assistant driving it. There is a ready-made prompt in the [Set it up with an AI assistant](docs/setup.md#set-it-up-with-an-ai-assistant) section of the setup guide. Paste it into your assistant inside a clone of this repo, hand over your keys as it asks, and it will walk you through connecting Instagram and going live.

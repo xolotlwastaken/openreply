@@ -292,6 +292,12 @@ export default async function Home() {
           </Link>
 
           <div className="flex items-center gap-4">
+            <Link
+              href="/docs/mcp"
+              className="hidden text-sm font-semibold text-zinc-600 transition hover:text-zinc-900 sm:inline-flex"
+            >
+              MCP docs
+            </Link>
             <a
               href={GITHUB_URL}
               target="_blank"
